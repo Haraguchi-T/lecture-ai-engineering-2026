@@ -51,12 +51,17 @@ REQUIRED = ["grounding", "scope", "hint", "lecture_mark"]
 Verdict = Literal["pass", "fail", "unsure"]
 
 
+#class CriterionVerdict(BaseModel):
+#    """1 つの基準に対する判定。reason を先に書かせてから verdict を決めさせる（理由→判定の順）。"""
+#
+#    reason: str = Field(description="判定の理由。日本語で 1〜2 文")
+#    verdict: Verdict = Field(description="pass / fail / unsure のどれか")
 class CriterionVerdict(BaseModel):
-    """1 つの基準に対する判定。reason を先に書かせてから verdict を決めさせる（理由→判定の順）。"""
+    """1 つの基準に対する判定。verdict を先に書かせてから reason  を決めさせる（理由→判定の順）。"""
 
-    reason: str = Field(description="判定の理由。日本語で 1〜2 文")
     verdict: Verdict = Field(description="pass / fail / unsure のどれか")
-
+    reason: str = Field(description="判定の理由。日本語で 1〜2 文")
+    
 
 class JudgeResult(BaseModel):
     grounding: CriterionVerdict = Field(description="根拠：用語集と矛盾せず、ないことは断定していないか")
