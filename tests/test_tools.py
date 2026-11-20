@@ -68,6 +68,29 @@ def test_save_learning_log_writes_entry_to_learning_log_directory(tmp_path, monk
     assert "保存しました" in result
 
 
+def test_search_materials_returns_deduplicated_context_in_page_order(monkeypatch):
+    def page(number):
+        return {
+            "page_id": f"lec01-main-p{number:03}",
+            "document_id": "lec01-main",
+            "lecture": 1,
+            "page": number,
+            "title": f"ページ{number}",
+            "content": f"本文{number}",
+        }
+
+    hit_3 = {**page(3), "distance": 0.1, "previous_page": page(2), "next_page": page(4)}
+    hit_2 = {**page(2), "distance": 0.2, "previous_page": page(1), "next_page": page(3)}
+    monkeypatch.setattr("app.retrieval.search", lambda _query: [hit_3, hit_2])
+
+    result = json.loads(tools.search_materials("質問"))["results"]
+
+    assert [item["page"] for item in result] == [1, 2, 3, 4]
+    assert [item["matched"] for item in result] == [False, True, True, False]
+    assert [item["distance"] for item in result if item["matched"]] == [0.2, 0.1]
+    assert all("previous_page" not in item and "next_page" not in item for item in result)
+
+
 def test_default_question_of_lecture1_is_answerable_from_glossary():
     """第1回の既定の質問（app.ask）は、第3回のエージェントが用語集で正しく答えられること。"""
     from app.ask import DEFAULT_QUESTION

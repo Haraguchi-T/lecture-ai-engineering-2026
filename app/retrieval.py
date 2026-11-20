@@ -124,10 +124,43 @@ def open_index(path: Path):
         db.close()
 
 
+def add_neighbor_pages(page: dict, pages: list[dict] | None = None) -> dict:
+    """指定ページの同一資料内にある前後1ページを付加する。"""
+    all_pages = pages if pages is not None else load_pages(RAG_SOURCE)
+    document_pages = [
+        candidate for candidate in all_pages
+        if candidate["document_id"] == page["document_id"]
+    ]
+    page_id = page["page_id"]
+    index = next(
+        (i for i, candidate in enumerate(document_pages)
+         if candidate["page_id"] == page_id),
+        None,
+    )
+    previous = document_pages[index - 1] if index is not None and index > 0 else None
+    following = document_pages[index + 1] if index is not None and index + 1 < len(document_pages) else None
+
+    neighbor_pages = []
+    if previous is not None:
+        neighbor_pages.append(previous)
+    if following is not None:
+        neighbor_pages.append(following)
+
+    return {
+        **page,
+        "previous_page": previous,
+        "next_page": following,
+        "previous": previous,
+        "next": following,
+        "neighbor_pages": neighbor_pages,
+    }
+
+
 def search(query: str) -> list[dict]:
-    """質問を埋め込み、近いページを最大RAG_TOP_K件返す。"""
+    """質問を埋め込み、近いページと前後1ページを最大RAG_TOP_K件返す。"""
     if not isinstance(query, str) or not query.strip():
         raise ValueError("検索語が空です。")
+    pages = load_pages(RAG_SOURCE)
     with open_index(RAG_DB) as db:
         vector = embed_text(query.strip(), "RETRIEVAL_QUERY")
         rows = db.execute("""
@@ -135,12 +168,13 @@ def search(query: str) -> list[dict]:
                    vec_distance_cosine(embedding, ?) AS distance
             FROM chunks ORDER BY distance, page_id LIMIT ?
         """, (sqlite_vec.serialize_float32(vector), RAG_TOP_K))
-        return [dict(row) for row in rows]
+        return [add_neighbor_pages(dict(row), pages) for row in rows]
 
 
 def search_graph(query: str) -> dict:
     """ベクトル検索を入口に、前後ページと共通用語で候補を広げる。"""
-    pages = {page["page_id"]: page for page in load_pages(RAG_SOURCE)}
+    page_list = load_pages(RAG_SOURCE)
+    pages = {page["page_id"]: page for page in page_list}
     graph = json.loads(RAG_GRAPH.read_text(encoding="utf-8"))
     nodes = {node["id"]: node for node in graph["nodes"]
              if node["kind"] == "term" or node["id"] in pages}
@@ -156,8 +190,12 @@ def search_graph(query: str) -> dict:
     results, candidates = [], {}
     for rank, seed in enumerate(seeds):
         root = seed["page_id"]
-        results.append({**pages[root], "distance": seed["distance"], "hops": 0,
-                        "path": [{"id": root, "title": pages[root]["title"]}]})
+        result = add_neighbor_pages(
+            {**pages[root], "distance": seed["distance"], "hops": 0,
+             "path": [{"id": root, "title": pages[root]["title"]}]},
+            page_list,
+        )
+        results.append(result)
         queue = deque([(root, [root])])
         visited = {root}
         while queue:
@@ -176,8 +214,11 @@ def search_graph(query: str) -> dict:
                     continue
                 frequency = max((len(adjacent[n]) for n in route if nodes[n]["kind"] == "term"), default=0)
                 priority = (len(route) - 1, frequency, rank, neighbor)
-                candidate = {**pages[neighbor], "hops": len(route) - 1,
-                             "path": [{"id": n, "title": nodes[n]["title"]} for n in route]}
+                candidate = add_neighbor_pages(
+                    {**pages[neighbor], "hops": len(route) - 1,
+                     "path": [{"id": n, "title": nodes[n]["title"]} for n in route]},
+                    page_list,
+                )
                 if neighbor not in candidates or priority < candidates[neighbor][0]:
                     candidates[neighbor] = (priority, candidate)
     expanded = [candidate for _, candidate in sorted(candidates.values())]
@@ -209,3 +250,9 @@ if __name__ == "__main__":
         print(f"タイトル: {result['title']}")
         print(f"ページ: {result['page']}")
         print(f"\n{result['content']}")
+        if result["previous_page"] is not None:
+            previous = result["previous_page"]
+            print(f"\n[前ページ: PDF p.{previous['page']} · {previous['title']}]\n{previous['content']}")
+        if result["next_page"] is not None:
+            following = result["next_page"]
+            print(f"\n[次ページ: PDF p.{following['page']} · {following['title']}]\n{following['content']}")

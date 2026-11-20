@@ -36,6 +36,7 @@ from app.config import MODEL, api_error_message, get_api_key
 
 INSTRUCTIONS = """\
 あなたはAIエンジニアリング講座（AIE2026）の学習支援エージェントです。
+- 講義資料の内容を聞かれたら、必ず search_materials で検索し、返されたページ本文を根拠に答える。
 - 用語や講座に固有のことを答える前に、必ず search_glossary で用語集を確認する。
 - 回の内容を聞かれたら get_lecture_summary を使う。
 - クイズを出すときは make_quiz の結果から問題だけを伝え、正解はユーザーが回答するまで明かさない。
@@ -81,6 +82,7 @@ FULL_CONTEXT_PROMPT = "<資料>\n{materials}\n</資料>\n\n質問: {question}"
 # モデルは実行時に渡す（テストではAPIを呼ばない TestModel に差し替えるため）
 agent = Agent(instructions=INSTRUCTIONS, output_type=[str, DeferredToolRequests])
 agent.tool_plain(tools.search_glossary)
+agent.tool_plain(tools.search_materials)
 agent.tool_plain(tools.get_lecture_summary)
 agent.tool_plain(tools.make_quiz)
 agent.tool_plain(tools.save_learning_log, requires_approval=True)
@@ -289,22 +291,26 @@ def main() -> None:
         if not args.question:
             parser.error("質問を指定してください")
 
-    print(f"[model] {MODEL}")
-    if args.mcp:
-        print("[tools] MCP サーバー（app/mcp_servers.json）")
-    try:
-        model = build_model()
-        result = target.run_sync(args.question, model=model)
-        if _tool_was_called(result, "make_quiz"):
-            result = run_quiz_loop(target, result, model)
-        else:
-            result = run_with_approval(target, args.question, model, result=result)
-            print(result.output)
-    except ModelHTTPError as e:
-        print(api_error_message(e.status_code, str(e.body)[:200]))
-        raise SystemExit(1)
-    if args.trace:
-        print_trace(result)
+        print(f"[model] {MODEL}")
+        if args.mcp:
+            print("[tools] MCP サーバー（app/mcp_servers.json）")
+
+        started = perf_counter()
+        try:
+            if args.full_context:
+                result = run_full_context(
+                    target, args.question, build_model(),
+                    instructions=FULL_CONTEXT_INSTRUCTIONS, prompt_template=FULL_CONTEXT_PROMPT,
+                )
+            else:
+                result = target.run_sync(args.question, model=build_model())
+        except ModelHTTPError as e:
+            print(api_error_message(e.status_code, str(e.body)[:200]))
+            raise SystemExit(1)
+        elapsed_seconds = perf_counter() - started
+        print(result.output)
+        if args.trace:
+            print_trace(result, elapsed_seconds)
 
 
 if __name__ == "__main__":
