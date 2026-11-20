@@ -107,3 +107,76 @@ def save_learning_log(entry: str) -> str:
     path = LEARNING_LOG_DIR / filename
     path.write_text(entry, encoding="utf-8")
     return f"学習記録を {path} に保存しました。"
+
+
+def search_materials(query: str) -> str:
+    """第1〜3回の本講義資料を検索し、ヒットしたページと前後1ページをページ順に返す。
+
+    queryに調べたい内容を指定する。
+    """
+    from google.genai.errors import APIError
+    import sqlite3
+    from app.retrieval import search
+
+    try:
+        hits = search(query)
+        context_pages = {}
+        for hit in hits:
+            for page in (hit.get("previous_page"), hit, hit.get("next_page")):
+                if page is None:
+                    continue
+                page_id = page["page_id"]
+                context_page = {
+                    key: value
+                    for key, value in page.items()
+                    if key not in {
+                        "previous_page", "next_page", "previous", "next", "neighbor_pages"
+                    }
+                }
+                existing_page = context_pages.get(page_id, {})
+                context_page["matched"] = page_id == hit["page_id"] or existing_page.get("matched", False)
+                if page_id == hit["page_id"] and "distance" in hit:
+                    context_page["distance"] = hit["distance"]
+                elif "distance" in existing_page:
+                    context_page["distance"] = existing_page["distance"]
+                context_pages[page_id] = context_page
+
+        results = sorted(
+            context_pages.values(),
+            key=lambda page: (page["lecture"], page["document_id"], page["page"]),
+        )
+        return json.dumps({"results": results}, ensure_ascii=False)
+    except (ValueError, FileNotFoundError, sqlite3.Error) as e:
+        return json.dumps({"error": str(e), "results": []}, ensure_ascii=False)
+    except APIError as e:
+        return json.dumps({"error": api_error_message(e.code), "results": []}, ensure_ascii=False)
+
+
+def browse_tree(node_id: str | None = None) -> str:
+    """目次とページの先頭文を返す。ページIDを指定すると全文を返す。
+
+    最初はnode_idを省略する。続いて返されたIDを指定して目次をたどる。
+    """
+    from app.retrieval import browse_tree as browse
+
+    try:
+        return json.dumps(browse(node_id), ensure_ascii=False)
+    except (ValueError, OSError) as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+
+def search_graph(query: str) -> str:
+    """資料を検索し、前後ページ・共通用語をたどって関連ページの本文と引用情報を返す。
+
+    queryに調べたい内容を指定する。
+    """
+    import sqlite3
+    from google.genai.errors import APIError
+    from app.retrieval import search_graph as search
+
+    try:
+        return json.dumps(search(query), ensure_ascii=False)
+    except (ValueError, OSError, sqlite3.Error) as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+    except APIError as e:
+        return json.dumps({"error": api_error_message(e.code)}, ensure_ascii=False)

@@ -13,7 +13,7 @@ from pydantic_ai.models.test import TestModel
 
 from app.agent import agent, run_quiz_loop, run_with_approval
 
-BASE_TOOLS = {"search_glossary", "get_lecture_summary", "make_quiz"}
+BASE_TOOLS = {"search_glossary", "search_materials", "get_lecture_summary", "make_quiz"}
 
 
 def _parts(result, kind):
@@ -38,13 +38,21 @@ def test_base_tools_are_registered_and_called(monkeypatch):
 
 
 def test_material_result_reaches_the_model(monkeypatch):
-    hit = {"page_id": "lec02-main-p052", "lecture": 2, "page": 52, "content": "元の重みは固定"}
+    hit = {
+        "page_id": "lec02-main-p052",
+        "document_id": "lec02-main",
+        "lecture": 2,
+        "page": 52,
+        "title": "LoRA",
+        "content": "元の重みは固定",
+    }
     monkeypatch.setattr("app.retrieval.search", lambda *args, **kwargs: [hit])
     model = TestModel(call_tools=["search_materials"])
     with agent.override(model=model):
         result = agent.run_sync("RAGとは？")
     returns = _parts(result, ToolReturnPart)
-    assert returns and returns[0].tool_name == "search_glossary"
+    material_return = next(part for part in returns if part.tool_name == "search_materials")
+    assert "元の重みは固定" in material_return.content
 
 
 def test_save_learning_log_waits_for_approval(tmp_path, monkeypatch):

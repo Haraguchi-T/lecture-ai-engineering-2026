@@ -42,6 +42,31 @@ def test_built_index_can_be_searched(materials, monkeypatch):
     assert hits[0]["distance"] == pytest.approx(0)
 
 
+def test_neighbor_pages_include_only_adjacent_pages_from_the_same_document():
+    pages = [
+        {"page_id": "lec01-main-p001", "document_id": "lec01-main",
+         "lecture": 1, "page": 1, "title": "1", "content": "本文1"},
+        {"page_id": "lec01-main-p002", "document_id": "lec01-main",
+         "lecture": 1, "page": 2, "title": "2", "content": "本文2"},
+        {"page_id": "lec02-main-p001", "document_id": "lec02-main",
+         "lecture": 2, "page": 1, "title": "別資料", "content": "別資料本文"},
+        {"page_id": "lec01-main-p003", "document_id": "lec01-main",
+         "lecture": 1, "page": 3, "title": "3", "content": "本文3"},
+    ]
+
+    middle = retrieval.add_neighbor_pages(pages[1], pages)
+    assert middle["previous_page"]["page_id"] == "lec01-main-p001"
+    assert middle["next_page"]["page_id"] == "lec01-main-p003"
+    assert [page["page_id"] for page in middle["neighbor_pages"]] == [
+        "lec01-main-p001",
+        "lec01-main-p003",
+    ]
+
+    first = retrieval.add_neighbor_pages(pages[0], pages)
+    assert first["previous_page"] is None
+    assert first["next_page"]["page_id"] == "lec01-main-p002"
+
+
 def test_existing_index_survives_failed_rebuild(materials):
     source, database = materials
     build_index(source, database, embedder=lambda *_: [1, 0])
