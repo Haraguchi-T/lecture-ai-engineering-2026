@@ -10,6 +10,8 @@ from datetime import datetime
 from functools import cache
 from pathlib import Path
 
+from app.config import api_error_message
+
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 LEARNING_LOG_DIR = Path(__file__).resolve().parent.parent / "learning_log"
 MAX_RESULTS = 3
