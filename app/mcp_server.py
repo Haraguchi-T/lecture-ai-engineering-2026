@@ -28,6 +28,8 @@ server = MCPServer(
 server.tool()(tools.search_glossary)
 
 # TODO(宿題・基礎): get_lecture_summary も公開しよう
+server.tool()(tools.make_quiz)
+server.tool()(tools.save_learning_log)
 
 
 def main() -> None:

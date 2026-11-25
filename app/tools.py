@@ -89,7 +89,13 @@ def make_quiz(lecture: int) -> str:
 
     問題文と選んだ用語の定義を返す。
     """
-    terms = [term for term in load_glossary() if term["lecture"] == lecture]
+    glossary = load_glossary()
+    available_lectures = sorted({term["lecture"] for term in glossary})
+    if available_lectures and not min(available_lectures) <= lecture <= max(available_lectures):
+        lectures = "、".join(f"第{number}回" for number in available_lectures)
+        return f"第{lecture}回は対象範囲外です。用語集にある回: {lectures}。"
+
+    terms = [term for term in glossary if term["lecture"] == lecture]
     if not terms:
         return f"第{lecture}回の用語は用語集にありません。"
 

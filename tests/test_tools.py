@@ -56,6 +56,17 @@ def test_make_quiz_reports_when_lecture_has_no_terms(monkeypatch):
     assert "第99回" in tools.make_quiz(99)
 
 
+def test_make_quiz_reports_out_of_range_lecture(monkeypatch):
+    terms = [
+        {"lecture": 2, "term": "第2回の用語", "definition": "第2回の定義"},
+        {"lecture": 3, "term": "第3回の用語", "definition": "第3回の定義"},
+    ]
+    monkeypatch.setattr(tools, "load_glossary", lambda: terms)
+
+    assert tools.make_quiz(1) == "第1回は対象範囲外です。用語集にある回: 第2回、第3回。"
+    assert tools.make_quiz(4) == "第4回は対象範囲外です。用語集にある回: 第2回、第3回。"
+
+
 def test_save_learning_log_writes_entry_to_learning_log_directory(tmp_path, monkeypatch):
     log_dir = tmp_path / "learning_log"
     monkeypatch.setattr(tools, "LEARNING_LOG_DIR", log_dir)
